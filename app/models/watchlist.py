@@ -1,0 +1,1 @@
+"""Watchlist item model placeholder."""

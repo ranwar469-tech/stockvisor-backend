@@ -1,0 +1,1 @@
+"""Portfolio/Holding model placeholder."""
