@@ -4,7 +4,8 @@ sqlalchemy
 psycopg2-binary
 pydantic[email]
 pydantic-settings
-python-jose[cryptography]
-passlib[bcrypt]
+PyJWT[crypto]
 python-multipart
 python-dotenv
+httpx
+yfinance

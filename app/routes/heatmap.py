@@ -1,26 +1,10 @@
 import math
-from typing import Dict, List
+from typing import List, Dict
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter
 import yfinance as yf
 
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # tighten this to your frontend URL in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-ticker = yf.Ticker("AAPL")
-current_price = ticker.fast_info['last_price']
-
-@app.get("/")
-def read_root():
-    return {"current price": current_price}
+router = APIRouter(prefix="/api")
 
 # Define the sectors and their representative stocks
 MARKET_SECTORS: Dict[str, List[str]] = {
@@ -31,7 +15,7 @@ MARKET_SECTORS: Dict[str, List[str]] = {
 }
 
 
-@app.get("/heatmap")
+@router.get("/heatmap")
 def get_heatmap_data():
     """Return a list of heatmap data for frontend consumption.
 
