@@ -48,41 +48,16 @@ async def register(body: UserCreate, db: Session = Depends(get_db)):
         detail = data.get("msg") or data.get("error_description") or data.get("message", "Registration failed")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
 
-    # Supabase returns user info and (optionally) a session.
-    # If email confirmation is enabled, session will be null — we auto-login to get a token.
     user_data = data.get("user", data)
     session_data = data.get("session")
 
     user_id = user_data.get("id")
-    if not user_id:
+    access_token = (session_data or {}).get("access_token")
+
+    if not user_id or not access_token:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Unexpected response from auth provider",
-        )
-
-    # If Supabase didn't return a session (email confirmation enabled),
-    # immediately log in to get an access token.
-    if not session_data or not session_data.get("access_token"):
-        async with httpx.AsyncClient() as client:
-            login_resp = await client.post(
-                f"{settings.SUPABASE_URL}/auth/v1/token?grant_type=password",
-                headers=GOTRUE_HEADERS,
-                json={"email": body.email, "password": body.password},
-            )
-        if login_resp.status_code >= 400:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="User created but auto-login failed. Try logging in manually.",
-            )
-        login_data = login_resp.json()
-        access_token = login_data.get("access_token")
-    else:
-        access_token = session_data.get("access_token")
-
-    if not access_token:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="User created but could not obtain access token.",
         )
 
     # Create local profile

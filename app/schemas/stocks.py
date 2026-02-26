@@ -1,6 +1,6 @@
 """Pydantic schemas for stock data."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class StockQuote(BaseModel):
@@ -9,10 +9,8 @@ class StockQuote(BaseModel):
     name: str
     price: float
     change: float
-    changePercent: float = Field(alias="changePercent")
+    changePercent: float
     volume: int
-
-    model_config = {"populate_by_name": True}
 
 
 class StockSearchResult(BaseModel):

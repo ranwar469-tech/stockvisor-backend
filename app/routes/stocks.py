@@ -22,37 +22,9 @@ def get_stock_quote(symbol: str):
     except Exception:
         raise HTTPException(status_code=404, detail=f"Symbol '{symbol}' not found")
 
-    # yfinance returns an almost-empty dict for invalid tickers
     if not info or info.get("regularMarketPrice") is None:
-        # fallback: try fast_info
-        try:
-            fast = ticker.fast_info
-            last_price = fast.get("last_price") or fast.get("lastPrice")
-            prev_close = fast.get("previous_close") or fast.get("previousClose")
-            if last_price is None:
-                raise HTTPException(
-                    status_code=404, detail=f"Symbol '{symbol}' not found"
-                )
-        except Exception:
-            raise HTTPException(
-                status_code=404, detail=f"Symbol '{symbol}' not found"
-            )
+        raise HTTPException(status_code=404, detail=f"Symbol '{symbol}' not found")
 
-        change = round(last_price - (prev_close or last_price), 2)
-        change_pct = (
-            round((change / prev_close) * 100, 2) if prev_close else 0.0
-        )
-
-        return StockQuote(
-            symbol=symbol,
-            name=info.get("shortName") or info.get("longName") or symbol,
-            price=round(last_price, 2),
-            change=_safe(change),
-            changePercent=_safe(change_pct),
-            volume=info.get("volume") or 0,
-        )
-
-    # Happy path — full info dict available
     price = info.get("regularMarketPrice") or info.get("currentPrice") or 0.0
     prev_close = info.get("regularMarketPreviousClose") or info.get("previousClose") or price
     change = round(price - prev_close, 2)

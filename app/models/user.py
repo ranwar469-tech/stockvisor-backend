@@ -1,7 +1,5 @@
 """Profile model — mirrors Supabase auth.users into public schema."""
 
-from datetime import datetime
-
 from sqlalchemy import Column, DateTime, String, func
 
 from app.database import Base
