@@ -59,7 +59,7 @@ def add_holding(
     current_user: Profile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Add a new holding. If the user already holds this symbol, returns 409."""
+    """Add a holding or merge it into an existing symbol for the current user."""
     symbol = body.symbol.upper().strip()
 
     existing = (
@@ -68,10 +68,17 @@ def add_holding(
         .first()
     )
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"You already have a holding for {symbol}. Update or remove it first.",
+        total_quantity = existing.quantity + body.quantity
+        total_cost = (existing.quantity * existing.purchase_price) + (
+            body.quantity * body.purchase_price
         )
+
+        existing.quantity = total_quantity
+        existing.purchase_price = total_cost / total_quantity if total_quantity else 0.0
+
+        db.commit()
+        db.refresh(existing)
+        return _enrich(existing)
 
     # Try to resolve the company name via yfinance
     try:

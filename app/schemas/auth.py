@@ -31,3 +31,15 @@ class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserOut
+
+
+class ProfileUpdate(BaseModel):
+    """Request body for PATCH /auth/profile."""
+    username: str
+    email: EmailStr
+
+
+class PasswordChange(BaseModel):
+    """Request body for PATCH /auth/password."""
+    current_password: str
+    new_password: str
