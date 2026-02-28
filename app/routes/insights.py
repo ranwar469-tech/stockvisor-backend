@@ -6,7 +6,7 @@ from fastapi import APIRouter
 import yfinance as yf
 from huggingface_hub import InferenceClient
 from app.core.config import settings
-from app.schemas.insights import SentimentItem
+from app.schemas.insights import AlertResponse, SentimentItem
 
 router = APIRouter(prefix="/insights", tags=["insights"])
 
@@ -14,6 +14,19 @@ client = InferenceClient(
     provider="hf-inference",
     api_key=settings.HF_TOKEN,
 )
+
+
+def _summary_to_text(summary_output) -> str:
+    summary_text = getattr(summary_output, "summary_text", None)
+    if isinstance(summary_text, str):
+        return summary_text
+
+    if isinstance(summary_output, dict):
+        dict_summary = summary_output.get("summary_text")
+        if isinstance(dict_summary, str):
+            return dict_summary
+
+    return str(summary_output)
 
 #  result = client.text_classification(
 #     "I like you. I love you",
@@ -73,3 +86,31 @@ def get_financial_insight():
         model="mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis",
     )
     return result
+
+
+@router.get("/alerts/", response_model=AlertResponse)
+def get_insight_alerts():
+    ticker=yf.Ticker("AAPL")
+    press_releases = ticker.get_news(4, "press releases")
+
+    result1 = client.summarization(
+    press_releases[0]['content']['summary'],
+    model="human-centered-summarization/financial-summarization-pegasus",
+)
+    result2 = client.summarization(
+    press_releases[1]['content']['summary'],
+    model="human-centered-summarization/financial-summarization-pegasus",
+)
+    result3 = client.summarization(
+    press_releases[2]['content']['summary'],
+    model="human-centered-summarization/financial-summarization-pegasus",
+)
+    result4= client.summarization(
+    press_releases[3]['content']['summary'],
+    model="human-centered-summarization/financial-summarization-pegasus",)
+    return AlertResponse(
+        ai_alert_1=_summary_to_text(result1),
+        ai_alert_2=_summary_to_text(result2),
+        ai_alert_3=_summary_to_text(result3),
+        ai_alert_4=_summary_to_text(result4),
+    )

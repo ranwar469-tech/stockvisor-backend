@@ -10,7 +10,7 @@ from app.core.security import get_current_user
 from app.database import get_db
 from app.models.portfolio import Holding
 from app.models.user import Profile
-from app.schemas.portfolio import HoldingCreate, HoldingResponse
+from app.schemas.portfolio import HoldingCreate, HoldingResponse, HoldingSell
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
@@ -98,6 +98,57 @@ def add_holding(
     db.commit()
     db.refresh(holding)
 
+    return _enrich(holding)
+
+
+@router.post("/sell", response_model=HoldingResponse)
+def sell_holding(
+    body: HoldingSell,
+    current_user: Profile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Sell shares from an existing holding for the current user."""
+    symbol = body.symbol.upper().strip()
+
+    if body.quantity <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Quantity must be greater than 0",
+        )
+
+    holding = (
+        db.query(Holding)
+        .filter(Holding.user_id == current_user.id, Holding.symbol == symbol)
+        .first()
+    )
+    if not holding:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Holding not found")
+
+    if body.quantity > holding.quantity:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sell quantity exceeds owned quantity",
+        )
+
+    remaining_quantity = holding.quantity - body.quantity
+    if remaining_quantity <= 0:
+        sold_snapshot = {
+            "id": holding.id,
+            "symbol": holding.symbol,
+            "name": holding.name or holding.symbol,
+            "quantity": 0.0,
+            "purchasePrice": holding.purchase_price,
+            "currentPrice": holding.purchase_price,
+            "dailyChange": 0.0,
+            "dailyChangePercent": 0.0,
+        }
+        db.delete(holding)
+        db.commit()
+        return sold_snapshot
+
+    holding.quantity = remaining_quantity
+    db.commit()
+    db.refresh(holding)
     return _enrich(holding)
 
 

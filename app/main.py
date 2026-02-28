@@ -6,13 +6,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
-from app.models import Profile, Holding, WatchlistItem, SavedNews  # noqa: F401 — ensure models registered
+from app.models import Profile, Holding, WatchlistItem, SavedNews, Thread, Post  # noqa: F401 — ensure models registered
 from app.routes.auth import router as auth_router
 from app.routes.heatmap import router as heatmap_router
 from app.routes.stocks import router as stocks_router
 from app.routes.portfolio import router as portfolio_router
 from app.routes.watchlist import router as watchlist_router
 from app.routes.insights import router as insights_router
+from app.routes.discussions import router as discussions_router
 
 
 @asynccontextmanager
@@ -38,6 +39,7 @@ app.include_router(stocks_router)
 app.include_router(portfolio_router)
 app.include_router(watchlist_router)
 app.include_router(insights_router)
+app.include_router(discussions_router)
 
 
 @app.get("/")

@@ -10,6 +10,12 @@ class HoldingCreate(BaseModel):
     purchase_price: float
 
 
+class HoldingSell(BaseModel):
+    """Request body for POST /portfolio/sell."""
+    symbol: str
+    quantity: float
+
+
 class HoldingResponse(BaseModel):
     """Response body for a portfolio holding (camelCase aliases for frontend)."""
     id: int
