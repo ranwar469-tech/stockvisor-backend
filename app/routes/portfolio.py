@@ -35,11 +35,13 @@ def _enrich(holding: Holding) -> dict:
         "id": holding.id,
         "symbol": holding.symbol,
         "name": name,
+        "sector": holding.sector,
         "quantity": holding.quantity,
         "purchasePrice": holding.purchase_price,
         "currentPrice": round(price, 2),
         "dailyChange": change,
         "dailyChangePercent": change_pct,
+        "createdAt": holding.created_at,
     }
 
 
@@ -80,17 +82,20 @@ def add_holding(
         db.refresh(existing)
         return _enrich(existing)
 
-    # Try to resolve the company name via yfinance
+    # Try to resolve the company name and sector via yfinance
     try:
-        info = yf.Ticker(symbol).info or {}
+        info = yf.Ticker(symbol).get_info() or {}
         name = info.get("shortName") or info.get("longName") or symbol
+        sector = info.get("sector")
     except Exception:
         name = symbol
+        sector = None
 
     holding = Holding(
         user_id=current_user.id,
         symbol=symbol,
         name=name,
+        sector=sector,
         quantity=body.quantity,
         purchase_price=body.purchase_price,
     )
@@ -136,6 +141,7 @@ def sell_holding(
             "id": holding.id,
             "symbol": holding.symbol,
             "name": holding.name or holding.symbol,
+            "sector": holding.sector,
             "quantity": 0.0,
             "purchasePrice": holding.purchase_price,
             "currentPrice": holding.purchase_price,

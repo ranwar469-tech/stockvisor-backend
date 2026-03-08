@@ -15,6 +15,7 @@ class Holding(Base):
     user_id = Column(String, ForeignKey("profiles.id"), nullable=False)
     symbol = Column(String(10), nullable=False)
     name = Column(String(100), nullable=True)
+    sector = Column(String(100), nullable=True)
     quantity = Column(Float, nullable=False)
     purchase_price = Column(Float, nullable=False)
     created_at = Column(DateTime, server_default=func.now())

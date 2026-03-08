@@ -1,6 +1,7 @@
 """Insights routes — placeholder endpoints for future insights APIs."""
 
 from typing import List
+import random
 
 from fastapi import APIRouter
 import yfinance as yf
@@ -91,22 +92,23 @@ def get_financial_insight():
 @router.get("/alerts/", response_model=AlertResponse)
 def get_insight_alerts():
     ticker=yf.Ticker("AAPL")
-    press_releases = ticker.get_news(4, "press releases")
+    news = ticker.get_news(10, "news")
+    newsarr=random.sample(range(10), 4)
 
     result1 = client.summarization(
-    press_releases[0]['content']['summary'],
+    news[newsarr[0]]['content']['summary'],
     model="human-centered-summarization/financial-summarization-pegasus",
 )
     result2 = client.summarization(
-    press_releases[1]['content']['summary'],
+    news[newsarr[1]]['content']['summary'],
     model="human-centered-summarization/financial-summarization-pegasus",
 )
     result3 = client.summarization(
-    press_releases[2]['content']['summary'],
+    news[newsarr[2]]['content']['summary'],
     model="human-centered-summarization/financial-summarization-pegasus",
 )
     result4= client.summarization(
-    press_releases[3]['content']['summary'],
+    news[newsarr[3]]['content']['summary'],
     model="human-centered-summarization/financial-summarization-pegasus",)
     return AlertResponse(
         ai_alert_1=_summary_to_text(result1),

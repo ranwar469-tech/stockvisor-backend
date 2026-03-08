@@ -1,5 +1,7 @@
 """Pydantic schemas for portfolio holdings."""
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -21,11 +23,13 @@ class HoldingResponse(BaseModel):
     id: int
     symbol: str
     name: str | None = None
+    sector: str | None = None
     quantity: float
     purchase_price: float = Field(alias="purchasePrice")
     current_price: float = Field(alias="currentPrice")
     daily_change: float = Field(alias="dailyChange")
     daily_change_percent: float = Field(alias="dailyChangePercent")
+    created_at: datetime | None = Field(None, alias="createdAt")
 
     class Config:
         from_attributes = True
