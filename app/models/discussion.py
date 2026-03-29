@@ -28,6 +28,8 @@ class Post(Base):
     thread_id = Column(Integer, ForeignKey("threads.id"), nullable=False)
     user_id = Column(String, ForeignKey("profiles.id"), nullable=False)
     message = Column(Text, nullable=False)
+    likes = Column(Integer, nullable=False, default=0)
+    liked_user_ids = Column(JSON, nullable=False, default=list)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

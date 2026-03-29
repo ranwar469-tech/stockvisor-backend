@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.database import get_db
+from app.models.discussion import Post, Thread
 from app.models.portfolio import Holding
+from app.models.saved_news import SavedNews
 from app.models.user import Profile
 from app.models.watchlist import WatchlistItem
 from app.core.security import get_current_user, oauth2_scheme
@@ -18,6 +20,43 @@ GOTRUE_HEADERS = {
     "apikey": settings.SUPABASE_ANON_KEY,
     "Content-Type": "application/json",
 }
+
+
+def _refresh_thread_stats(db: Session, thread: Thread) -> None:
+    remaining_user_rows = (
+        db.query(Post.user_id)
+        .filter(Post.thread_id == thread.id)
+        .distinct()
+        .all()
+    )
+    remaining_post_count = db.query(Post).filter(Post.thread_id == thread.id).count()
+    thread.message_count = remaining_post_count
+    thread.participating_users = [str(user_id) for (user_id,) in remaining_user_rows]
+
+
+def _delete_user_local_data(db: Session, user_id: str) -> None:
+    posts_by_user_thread_ids = {
+        thread_id
+        for (thread_id,) in db.query(Post.thread_id).filter(Post.user_id == user_id).distinct().all()
+    }
+
+    db.query(Post).filter(Post.user_id == user_id).delete(synchronize_session=False)
+
+    threads_created_by_user = db.query(Thread).filter(Thread.created_by == user_id).all()
+    deleted_thread_ids = {thread.id for thread in threads_created_by_user}
+    for thread in threads_created_by_user:
+        db.delete(thread)
+
+    remaining_thread_ids = posts_by_user_thread_ids - deleted_thread_ids
+    for thread_id in remaining_thread_ids:
+        thread = db.query(Thread).filter(Thread.id == thread_id).first()
+        if thread:
+            _refresh_thread_stats(db, thread)
+
+    db.query(Holding).filter(Holding.user_id == user_id).delete(synchronize_session=False)
+    db.query(WatchlistItem).filter(WatchlistItem.user_id == user_id).delete(synchronize_session=False)
+    db.query(SavedNews).filter(SavedNews.user_id == user_id).delete(synchronize_session=False)
+    db.query(Profile).filter(Profile.id == user_id).delete(synchronize_session=False)
 
 
 @router.post("/register", response_model=Token)
@@ -82,6 +121,7 @@ async def register(body: UserCreate, db: Session = Depends(get_db)):
         id=user_id,
         username=body.username,
         email=body.email,
+        role="user",
     )
     db.add(profile)
     db.commit()
@@ -130,7 +170,7 @@ async def login(body: UserLogin, db: Session = Depends(get_db)):
     if not profile:
         email = user_data.get("email", body.email)
         username = (user_data.get("user_metadata") or {}).get("username", email.split("@")[0])
-        profile = Profile(id=user_id, username=username, email=email)
+        profile = Profile(id=user_id, username=username, email=email, role="user")
         db.add(profile)
         db.commit()
         db.refresh(profile)
@@ -156,28 +196,32 @@ async def update_profile(
 ):
     """Update the user's username and/or email."""
     # Check username uniqueness (if changed)
-    if body.username != current_user.username:
+    if body.username and body.username != current_user.username:
         taken = db.query(Profile).filter(Profile.username == body.username).first()
         if taken:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Username already taken",
             )
+        current_user.username = body.username
 
     # If email changed, update it in Supabase too
-    if body.email != current_user.email:
+    if body.email and body.email != current_user.email:
         async with httpx.AsyncClient() as client:
             resp = await client.put(
-                f"{settings.SUPABASE_URL}/auth/v1/user",
-                headers={**GOTRUE_HEADERS, "Authorization": f"Bearer {token}"},
-                json={"email": body.email},
+                f"{settings.SUPABASE_URL}/auth/v1/admin/users/{current_user.id}",
+                headers={
+                    "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+                    "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={"email": body.email, "email_confirm": True},
             )
         if resp.status_code >= 400:
             detail = resp.json().get("message", "Failed to update email")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+        current_user.email = body.email
 
-    current_user.username = body.username
-    current_user.email = body.email
     db.commit()
     db.refresh(current_user)
     return UserOut.model_validate(current_user)
@@ -227,9 +271,7 @@ async def delete_account(
     user_id = current_user.id
 
     # Delete local data
-    db.query(Holding).filter(Holding.user_id == user_id).delete()
-    db.query(WatchlistItem).filter(WatchlistItem.user_id == user_id).delete()
-    db.query(Profile).filter(Profile.id == user_id).delete()
+    _delete_user_local_data(db, user_id)
     db.commit()
 
     # Delete user from Supabase Auth (requires service role key)

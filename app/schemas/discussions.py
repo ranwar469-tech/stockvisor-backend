@@ -31,6 +31,7 @@ class PostOut(BaseModel):
     user_id: str
     username: str
     message: str
+    likes: int
     created_at: datetime
     updated_at: datetime
 
@@ -55,3 +56,9 @@ class ThreadOut(BaseModel):
 
 class ThreadDetailOut(ThreadOut):
     posts: List[PostOut]
+
+
+class PostLikesOut(BaseModel):
+    post_id: int
+    likes: int
+    liked: bool

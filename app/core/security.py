@@ -55,3 +55,13 @@ def get_current_user(
         logger.warning("No profile found for user_id=%s", user_id)
         raise credentials_exception
     return profile
+
+
+def get_current_admin(current_user: Profile = Depends(get_current_user)) -> Profile:
+    """Require the current user to have admin role."""
+    if (current_user.role or "user") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user

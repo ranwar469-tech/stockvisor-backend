@@ -11,6 +11,7 @@ from app.models.discussion import Post, Thread
 from app.models.user import Profile
 from app.schemas.discussions import (
     PostCreate,
+    PostLikesOut,
     PostOut,
     PostUpdate,
     ThreadCreate,
@@ -25,6 +26,12 @@ router = APIRouter(prefix="/discussions", tags=["discussions"])
 def _normalize_participants(raw_participants) -> List[str]:
     if isinstance(raw_participants, list):
         return [str(user_id) for user_id in raw_participants]
+    return []
+
+
+def _normalize_liked_users(raw_liked_users) -> List[str]:
+    if isinstance(raw_liked_users, list):
+        return [str(user_id) for user_id in raw_liked_users]
     return []
 
 
@@ -59,6 +66,7 @@ def _to_post_out(post: Post, username_lookup: Optional[dict[str, str]] = None) -
         user_id=post.user_id,
         username=usernames.get(str(post.user_id), str(post.user_id)),
         message=post.message,
+        likes=post.likes,
         created_at=post.created_at,
         updated_at=post.updated_at,
     )
@@ -211,6 +219,56 @@ def list_posts(
     )
     username_lookup = _resolve_usernames(db, [str(post.user_id) for post in posts])
     return [_to_post_out(post, username_lookup) for post in posts]
+
+
+@router.get("/posts/{post_id}/likes", response_model=PostLikesOut)
+def get_post_likes(
+    post_id: int,
+    current_user: Profile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    liked_users = _normalize_liked_users(post.liked_user_ids)
+    likes_count = len(liked_users)
+    if post.likes != likes_count:
+        post.likes = likes_count
+        db.commit()
+        db.refresh(post)
+
+    return PostLikesOut(
+        post_id=post.id,
+        likes=post.likes,
+        liked=current_user.id in liked_users,
+    )
+
+
+@router.post("/posts/{post_id}/likes", response_model=PostLikesOut)
+def toggle_post_like(
+    post_id: int,
+    current_user: Profile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    liked_users = _normalize_liked_users(post.liked_user_ids)
+    if current_user.id in liked_users:
+        liked_users.remove(current_user.id)
+        liked = False
+    else:
+        liked_users.append(current_user.id)
+        liked = True
+
+    post.liked_user_ids = liked_users
+    post.likes = len(liked_users)
+    db.commit()
+    db.refresh(post)
+
+    return PostLikesOut(post_id=post.id, likes=post.likes, liked=liked)
 
 
 @router.put("/posts/{post_id}", response_model=PostOut)

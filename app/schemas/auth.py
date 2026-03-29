@@ -21,6 +21,7 @@ class UserOut(BaseModel):
     id: str
     username: str
     email: str
+    role: str | None = None
 
     class Config:
         from_attributes = True
@@ -35,8 +36,8 @@ class Token(BaseModel):
 
 class ProfileUpdate(BaseModel):
     """Request body for PATCH /auth/profile."""
-    username: str
-    email: EmailStr
+    username: str | None = None
+    email: EmailStr | None = None
 
 
 class PasswordChange(BaseModel):

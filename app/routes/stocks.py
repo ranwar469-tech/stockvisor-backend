@@ -63,7 +63,14 @@ async def get_market_news(
             detail="Unexpected response from Finnhub",
         )
 
-    return data
+    filtered = [
+        item
+        for item in data
+        if isinstance(item, dict)
+        and "reuters" not in str(item.get("source") or "").strip().lower()
+    ]
+
+    return filtered
 
 
 @router.get("/recommendations", response_model=StockRecommendation)
