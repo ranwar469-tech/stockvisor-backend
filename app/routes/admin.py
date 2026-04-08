@@ -11,10 +11,11 @@ from app.core.security import get_current_admin
 from app.database import get_db
 from app.models.discussion import Post, Thread
 from app.models.portfolio import Holding
+from app.models.report import Report
 from app.models.saved_news import SavedNews
 from app.models.user import Profile
 from app.models.watchlist import WatchlistItem
-from app.schemas.admin import AdminUserOut, BanUserRequest
+from app.schemas.admin import AdminReportOut, AdminUserOut, BanUserRequest
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -116,7 +117,16 @@ def _delete_user_local_data(db: Session, user_id: str) -> None:
     db.query(Holding).filter(Holding.user_id == user_id).delete(synchronize_session=False)
     db.query(WatchlistItem).filter(WatchlistItem.user_id == user_id).delete(synchronize_session=False)
     db.query(SavedNews).filter(SavedNews.user_id == user_id).delete(synchronize_session=False)
+    db.query(Report).filter(Report.reported_by == user_id).delete(synchronize_session=False)
     db.query(Profile).filter(Profile.id == user_id).delete(synchronize_session=False)
+
+
+def _resolve_usernames(db: Session, user_ids: list[str]) -> dict[str, str]:
+    if not user_ids:
+        return {}
+
+    rows = db.query(Profile.id, Profile.username).filter(Profile.id.in_(set(user_ids))).all()
+    return {str(profile_id): username for profile_id, username in rows}
 
 
 @router.get("/users", response_model=list[AdminUserOut])
@@ -267,4 +277,84 @@ def admin_delete_post(
     if thread:
         db.flush()
         _refresh_thread_stats(db, thread)
+    db.commit()
+
+
+@router.get("/reports", response_model=list[AdminReportOut])
+def list_reports(
+    current_admin: Profile = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    _ = current_admin
+    reports = db.query(Report).order_by(Report.created_at.desc()).all()
+    username_lookup = _resolve_usernames(db, [str(report.reported_by) for report in reports])
+
+    thread_target_ids = [
+        report.target_id
+        for report in reports
+        if str(report.target_type or "").lower() == "thread"
+    ]
+    post_target_ids = [
+        report.target_id
+        for report in reports
+        if str(report.target_type or "").lower() == "post"
+    ]
+
+    post_rows = (
+        db.query(Post.id, Post.thread_id)
+        .filter(Post.id.in_(set(post_target_ids)))
+        .all()
+        if post_target_ids
+        else []
+    )
+    post_thread_lookup = {post_id: thread_id for post_id, thread_id in post_rows}
+
+    all_thread_ids = set(thread_target_ids)
+    all_thread_ids.update(thread_id for thread_id in post_thread_lookup.values() if thread_id is not None)
+    thread_rows = (
+        db.query(Thread.id, Thread.title)
+        .filter(Thread.id.in_(all_thread_ids))
+        .all()
+        if all_thread_ids
+        else []
+    )
+    thread_title_lookup = {thread_id: title for thread_id, title in thread_rows}
+
+    return [
+        AdminReportOut(
+            id=report.id,
+            target_type=report.target_type,
+            target_id=report.target_id,
+            thread_id=(
+                report.target_id
+                if str(report.target_type or "").lower() == "thread"
+                else post_thread_lookup.get(report.target_id)
+            ),
+            thread_title=thread_title_lookup.get(
+                report.target_id
+                if str(report.target_type or "").lower() == "thread"
+                else post_thread_lookup.get(report.target_id)
+            ),
+            reason=report.reason,
+            details=report.details,
+            reported_by=report.reported_by,
+            reported_by_username=username_lookup.get(str(report.reported_by), str(report.reported_by)),
+            created_at=report.created_at,
+        )
+        for report in reports
+    ]
+
+
+@router.delete("/reports/{report_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_report(
+    report_id: int,
+    current_admin: Profile = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    _ = current_admin
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+
+    db.delete(report)
     db.commit()

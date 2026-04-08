@@ -34,3 +34,17 @@ class HoldingResponse(BaseModel):
     class Config:
         from_attributes = True
         populate_by_name = True
+
+
+class PortfolioActivityOut(BaseModel):
+    id: int
+    activity_type: str = Field(alias="activityType")
+    symbol: str
+    name: str | None = None
+    shares: float
+    price: float
+    created_at: datetime | None = Field(None, alias="createdAt")
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True

@@ -9,10 +9,61 @@ from sqlalchemy.orm import Session
 from app.core.security import get_current_user
 from app.database import get_db
 from app.models.portfolio import Holding
+from app.models.portfolio_activity import PortfolioActivity
 from app.models.user import Profile
-from app.schemas.portfolio import HoldingCreate, HoldingResponse, HoldingSell
+from app.schemas.portfolio import HoldingCreate, HoldingResponse, HoldingSell, PortfolioActivityOut
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
+
+
+def _to_activity_out(activity: PortfolioActivity) -> PortfolioActivityOut:
+    return PortfolioActivityOut(
+        id=activity.id,
+        activityType=activity.activity_type,
+        symbol=activity.symbol,
+        name=activity.name,
+        shares=activity.shares,
+        price=activity.price,
+        createdAt=activity.created_at,
+    )
+
+
+def _seed_history_from_current_holdings(db: Session, user_id: str) -> None:
+    holdings = db.query(Holding).filter(Holding.user_id == user_id).all()
+    if not holdings:
+        return
+
+    existing_seed_ids = {
+        seeded_id
+        for (seeded_id,) in (
+            db.query(PortfolioActivity.seeded_from_holding_id)
+            .filter(
+                PortfolioActivity.user_id == user_id,
+                PortfolioActivity.activity_type == "buy",
+                PortfolioActivity.seeded_from_holding_id.isnot(None),
+            )
+            .all()
+        )
+        if seeded_id is not None
+    }
+
+    for holding in holdings:
+        if holding.id in existing_seed_ids:
+            continue
+        db.add(
+            PortfolioActivity(
+                user_id=user_id,
+                symbol=holding.symbol,
+                name=holding.name,
+                activity_type="buy",
+                shares=holding.quantity,
+                price=holding.purchase_price,
+                seeded_from_holding_id=holding.id,
+                created_at=holding.created_at,
+            )
+        )
+
+    db.commit()
 
 
 def _enrich(holding: Holding) -> dict:
@@ -55,6 +106,22 @@ def list_holdings(
     return [_enrich(h) for h in holdings]
 
 
+@router.get("/history", response_model=List[PortfolioActivityOut])
+def list_portfolio_history(
+    current_user: Profile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return persistent buy/sell history for current user."""
+    _seed_history_from_current_holdings(db, current_user.id)
+    activities = (
+        db.query(PortfolioActivity)
+        .filter(PortfolioActivity.user_id == current_user.id)
+        .order_by(PortfolioActivity.created_at.desc(), PortfolioActivity.id.desc())
+        .all()
+    )
+    return [_to_activity_out(activity) for activity in activities]
+
+
 @router.post("/", response_model=HoldingResponse, status_code=status.HTTP_201_CREATED)
 def add_holding(
     body: HoldingCreate,
@@ -78,6 +145,17 @@ def add_holding(
         existing.quantity = total_quantity
         existing.purchase_price = total_cost / total_quantity if total_quantity else 0.0
 
+        db.add(
+            PortfolioActivity(
+                user_id=current_user.id,
+                symbol=symbol,
+                name=existing.name,
+                activity_type="buy",
+                shares=body.quantity,
+                price=body.purchase_price,
+            )
+        )
+
         db.commit()
         db.refresh(existing)
         return _enrich(existing)
@@ -100,6 +178,19 @@ def add_holding(
         purchase_price=body.purchase_price,
     )
     db.add(holding)
+    db.flush()
+    db.add(
+        PortfolioActivity(
+            user_id=current_user.id,
+            symbol=symbol,
+            name=name,
+            activity_type="buy",
+            shares=body.quantity,
+            price=body.purchase_price,
+            seeded_from_holding_id=holding.id,
+            created_at=holding.created_at,
+        )
+    )
     db.commit()
     db.refresh(holding)
 
@@ -136,6 +227,16 @@ def sell_holding(
         )
 
     remaining_quantity = holding.quantity - body.quantity
+    db.add(
+        PortfolioActivity(
+            user_id=current_user.id,
+            symbol=holding.symbol,
+            name=holding.name,
+            activity_type="sell",
+            shares=body.quantity,
+            price=holding.purchase_price,
+        )
+    )
     if remaining_quantity <= 0:
         sold_snapshot = {
             "id": holding.id,

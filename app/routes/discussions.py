@@ -8,12 +8,15 @@ from sqlalchemy.orm import Session
 from app.core.security import get_current_user
 from app.database import get_db
 from app.models.discussion import Post, Thread
+from app.models.report import Report
 from app.models.user import Profile
 from app.schemas.discussions import (
     PostCreate,
     PostLikesOut,
     PostOut,
     PostUpdate,
+    ReportCreate,
+    ReportOut,
     ThreadCreate,
     ThreadDetailOut,
     ThreadOut,
@@ -82,6 +85,20 @@ def _refresh_thread_stats(db: Session, thread: Thread) -> None:
     remaining_post_count = db.query(Post).filter(Post.thread_id == thread.id).count()
     thread.message_count = remaining_post_count
     thread.participating_users = [str(user_id) for (user_id,) in remaining_user_rows]
+
+
+def _to_report_out(report: Report, username_lookup: Optional[dict[str, str]] = None) -> ReportOut:
+    usernames = username_lookup or {}
+    return ReportOut(
+        id=report.id,
+        target_type=report.target_type,
+        target_id=report.target_id,
+        reason=report.reason,
+        details=report.details,
+        reported_by=report.reported_by,
+        reported_by_username=usernames.get(str(report.reported_by), str(report.reported_by)),
+        created_at=report.created_at,
+    )
 
 
 @router.get("/threads", response_model=List[ThreadOut])
@@ -324,3 +341,61 @@ def delete_post(
         db.flush()
         _refresh_thread_stats(db, thread)
     db.commit()
+
+
+@router.post("/threads/{thread_id}/reports", response_model=ReportOut, status_code=status.HTTP_201_CREATED)
+def report_thread(
+    thread_id: int,
+    body: ReportCreate,
+    current_user: Profile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    thread = db.query(Thread).filter(Thread.id == thread_id).first()
+    if not thread:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found")
+
+    reason = body.reason.strip()
+    if not reason:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reason is required")
+
+    details = body.details.strip() if body.details else None
+    report = Report(
+        target_type="thread",
+        target_id=thread_id,
+        reason=reason,
+        details=details,
+        reported_by=current_user.id,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return _to_report_out(report, {str(current_user.id): current_user.username})
+
+
+@router.post("/posts/{post_id}/reports", response_model=ReportOut, status_code=status.HTTP_201_CREATED)
+def report_post(
+    post_id: int,
+    body: ReportCreate,
+    current_user: Profile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    reason = body.reason.strip()
+    if not reason:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reason is required")
+
+    details = body.details.strip() if body.details else None
+    report = Report(
+        target_type="post",
+        target_id=post_id,
+        reason=reason,
+        details=details,
+        reported_by=current_user.id,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return _to_report_out(report, {str(current_user.id): current_user.username})

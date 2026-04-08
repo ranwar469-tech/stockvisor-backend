@@ -62,3 +62,22 @@ class PostLikesOut(BaseModel):
     post_id: int
     likes: int
     liked: bool
+
+
+class ReportCreate(BaseModel):
+    reason: str
+    details: Optional[str] = None
+
+
+class ReportOut(BaseModel):
+    id: int
+    target_type: str
+    target_id: int
+    reason: str
+    details: Optional[str] = None
+    reported_by: str
+    reported_by_username: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
