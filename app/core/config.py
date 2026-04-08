@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str
     SUPABASE_JWT_SECRET: str
     FINNHUB_API_KEY: str
-    HF_TOKEN:str
+    HF_TOKEN: str
+    PORT: int = 8000
 
     class Config:
         env_file = ".env"
