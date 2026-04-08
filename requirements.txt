@@ -10,3 +10,4 @@ python-dotenv
 httpx
 yfinance
 huggingface_hub
+fastapi[standard]
