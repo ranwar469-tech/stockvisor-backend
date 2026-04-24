@@ -11,3 +11,5 @@ httpx
 yfinance
 huggingface_hub
 fastapi[standard]
+pytest
+locust

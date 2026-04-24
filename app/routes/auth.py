@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.database import get_db
 from app.models.discussion import Post, Thread
 from app.models.portfolio import Holding
+from app.models.report import Report
 from app.models.saved_news import SavedNews
 from app.models.user import Profile
 from app.models.watchlist import WatchlistItem
@@ -56,6 +57,7 @@ def _delete_user_local_data(db: Session, user_id: str) -> None:
     db.query(Holding).filter(Holding.user_id == user_id).delete(synchronize_session=False)
     db.query(WatchlistItem).filter(WatchlistItem.user_id == user_id).delete(synchronize_session=False)
     db.query(SavedNews).filter(SavedNews.user_id == user_id).delete(synchronize_session=False)
+    db.query(Report).filter(Report.reported_by == user_id).delete(synchronize_session=False)
     db.query(Profile).filter(Profile.id == user_id).delete(synchronize_session=False)
 
 
