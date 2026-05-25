@@ -17,7 +17,8 @@ load_dotenv(ROOT / ".env", override=False)
 def test_bearer_token():
 	token = os.getenv("TEST_BEARER_TOKEN", "").strip()
 	if token:
-		return token
+		yield token
+		return
 
 	username = f"pytest_{uuid.uuid4().hex[:10]}"
 	email = f"{username}@example.com"
@@ -44,7 +45,15 @@ def test_bearer_token():
 		pytest.fail("/auth/register succeeded but did not return access_token")
 
 	os.environ["TEST_BEARER_TOKEN"] = token
-	return token
+	try:
+		yield token
+	finally:
+		with TestClient(app) as client:
+			client.delete(
+				"/auth/account",
+				headers={"Authorization": f"Bearer {token}"},
+			)
+		os.environ.pop("TEST_BEARER_TOKEN", None)
 
 
 @pytest.fixture()

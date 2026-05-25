@@ -1,6 +1,7 @@
 """Stock data routes — quotes and search powered by yfinance."""
 
 import math
+from datetime import datetime, timedelta
 from typing import List
 
 import httpx
@@ -24,6 +25,10 @@ from app.schemas.stocks import (
 )
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
+
+# ── in-memory cache ──────────────────────────────────────────────────────────
+_cache: dict = {}
+_cache_ttl = timedelta(hours=24)
 
 
 @router.get("/status",response_model=MarketStatus)
@@ -275,6 +280,33 @@ def search_stocks(q: str = Query(..., min_length=1, description="Search query"))
             results.append(StockSearchResult(symbol=sym, name=name))
 
     return results
+
+
+@router.get("/active-count")
+async def get_active_stock_count():
+    """Return the total number of NASDAQ-listed stocks."""
+    now = datetime.utcnow()
+    cached = _cache.get("active_stock_count")
+    if cached and now - cached["timestamp"] < _cache_ttl:
+        return {"count": cached["count"]}
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.get(
+            "https://www.nasdaqtrader.com/dynamic/symdir/nasdaqlisted.txt",
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        lines = resp.text.strip().splitlines()
+        symbols = set()
+        for line in lines[1:]:
+            if not line.strip() or line.startswith("File Creation"):
+                continue
+            symbol = line.split("|")[0].strip().upper()
+            if symbol:
+                symbols.add(symbol)
+
+    count = len(symbols)
+    _cache["active_stock_count"] = {"count": count, "timestamp": now}
+    return {"count": count}
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────

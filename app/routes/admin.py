@@ -11,6 +11,7 @@ from app.core.security import get_current_admin
 from app.database import get_db
 from app.models.discussion import Post, Thread
 from app.models.portfolio import Holding
+from app.models.portfolio_activity import PortfolioActivity
 from app.models.report import Report
 from app.models.saved_news import SavedNews
 from app.models.user import Profile
@@ -115,6 +116,7 @@ def _delete_user_local_data(db: Session, user_id: str) -> None:
             _refresh_thread_stats(db, thread)
 
     db.query(Holding).filter(Holding.user_id == user_id).delete(synchronize_session=False)
+    db.query(PortfolioActivity).filter(PortfolioActivity.user_id == user_id).delete(synchronize_session=False)
     db.query(WatchlistItem).filter(WatchlistItem.user_id == user_id).delete(synchronize_session=False)
     db.query(SavedNews).filter(SavedNews.user_id == user_id).delete(synchronize_session=False)
     db.query(Report).filter(Report.reported_by == user_id).delete(synchronize_session=False)
